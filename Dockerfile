@@ -33,8 +33,8 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf.template
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Définir le port par défaut et l'exposer
-ENV PORT=8080
-EXPOSE 8080
+ENV WEBUI_PORT=8899
+EXPOSE 8899
 
 # Lancer Supervisor, qui lancera Nginx et Gunicorn
-CMD /bin/bash -c "envsubst < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && /usr/bin/supervisord"
+CMD /bin/bash -c "envsubst '\$WEBUI_PORT' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && /usr/bin/supervisord"

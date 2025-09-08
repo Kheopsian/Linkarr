@@ -1,44 +1,42 @@
-name: Build and Push Docker Image to GHCR
+name: Build and Push Docker Image to Docker Hub
 
-# Ce workflow se déclenche à chaque push sur la branche "main"
 on:
   push:
     branches: [ "main" ]
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest # Utilise la dernière version d'Ubuntu disponible sur GitHub Actions
-
-    permissions:
-      contents: read
-      packages: write # Nécessaire pour pousser l'image sur GHCR
+    runs-on: ubuntu-latest
 
     steps:
     # Étape 1: Récupère le code de ton dépôt
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Étape 2: Se connecte au GitHub Container Registry
-    - name: Log in to the Container registry
+    # Étape 2: Se connecte à Docker Hub
+    # On utilise les nouveaux secrets DOCKERHUB_*
+    - name: Log in to Docker Hub
       uses: docker/login-action@v3
       with:
-        registry: ghcr.io
-        username: ${{ github.actor }} # C'est ton nom d'utilisateur GitHub
-        password: ${{ secrets.CR_PAT }} # Utilise le secret que tu as créé
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    # Étape 3: Extrait les métadonnées (tags) pour l'image Docker
-    # Ici, on va taguer l'image avec "latest" et avec le hash du commit
+    # Étape 3: Extrait les métadonnées pour l'image Docker
+    # Le nom de l'image est maintenant au format Docker Hub
     - name: Extract metadata (tags, labels) for Docker
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ghcr.io/${{ github.repository }}
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/linkarr
+        tags: |
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=branch
 
-    # Étape 4: Construit l'image Docker et la pousse sur GHCR
+    # Étape 4: Construit et pousse l'image (cette étape ne change pas)
     - name: Build and push Docker image
       uses: docker/build-push-action@v6
       with:
-        context: . # Le contexte de build est la racine du projet
-        push: true # On veut bien pousser l'image
-        tags: ${{ steps.meta.outputs.tags }} # Utilise les tags générés à l'étape précédente
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}

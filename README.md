@@ -32,16 +32,16 @@ docker build -t linkarr .
 Pour lancer l'application, exécutez la commande suivante :
 
 ```bash
-docker run -p 8080:8080 linkarr
+docker run -p 8899:8899 linkarr
 ```
 
-L'application sera accessible à l'adresse [http://localhost:8080](http://localhost:8080).
+L'application sera accessible à l'adresse [http://localhost:8899](http://localhost:8899).
 
 ### Changer le port
 
-Par défaut, l'application est exposée sur le port `8080`. Vous pouvez changer ce port en utilisant la variable d'environnement `PORT`.
+Par défaut, l'application est exposée sur le port `8899`. Vous pouvez changer ce port en utilisant la variable d'environnement `WEBUI_PORT`.
 
-Par exemple, pour lancer l'application sur le port `8888` :
+Par exemple, pour lancer l'application sur le port `8080` :
 
 ```bash
-docker run -e PORT=8888 -p 8888:8888 linkarr
+docker run -e WEBUI_PORT=8080 -p 8080:8080 linkarr
