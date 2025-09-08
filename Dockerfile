@@ -1,10 +1,13 @@
 # --- STAGE 1: Build du Frontend ---
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm install
+# Copie package.json ET yarn.lock
+COPY frontend/package.json frontend/yarn.lock ./
+# Installe les dépendances avec yarn
+RUN yarn install
 COPY frontend/ .
-RUN npm run build
+# Lance le build avec yarn
+RUN yarn build
 
 # --- STAGE 2: Application Finale ---
 FROM python:3.11-slim
