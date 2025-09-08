@@ -1,0 +1,32 @@
+{
+  "tabs": [
+    {
+      "id": "movies",
+      "name": "Films",
+      "scan_mode": "file",
+      "check_column": "a",
+      "paths_a": [
+        "test_structure/downloads/movies"
+      ],
+      "paths_b": [
+        "test_structure/media/movies"
+      ],
+      "name_a": "Downloads",
+      "name_b": "Media"
+    },
+    {
+      "id": "series",
+      "name": "S\u00e9ries",
+      "scan_mode": "folder",
+      "check_column": "a",
+      "paths_a": [
+        "test_structure/downloads/series"
+      ],
+      "paths_b": [
+        "test_structure/media/series"
+      ],
+      "name_a": "Downloads",
+      "name_b": "Media"
+    }
+  ]
+}
