@@ -29,11 +29,12 @@ COPY backend/ ./backend/
 COPY --from=builder /app/dist /var/www/html
 
 # Copier les fichiers de configuration de Nginx et Supervisor
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf.template
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Exposer le port 80 (le seul port public, géré par Nginx)
-EXPOSE 80
+# Définir le port par défaut et l'exposer
+ENV PORT=8080
+EXPOSE 8080
 
 # Lancer Supervisor, qui lancera Nginx et Gunicorn
-CMD ["/usr/bin/supervisord"]
+CMD /bin/bash -c "envsubst < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && /usr/bin/supervisord"
