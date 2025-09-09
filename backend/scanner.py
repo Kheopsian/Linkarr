@@ -273,6 +273,133 @@ def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_co
     return results, errors
 
 # --- Section pour tester le script directement ---
+def delete_orphan_files(paths_a: list[str], paths_b: list[str], column: str = "b", dry_run: bool = False, task_id: str = None, tasks_db: dict = None, max_depth: int = -1):
+    """
+    Supprime les fichiers orphelins d'une colonne spécifique.
+    
+    Args:
+        paths_a: Liste des chemins de la colonne A
+        paths_b: Liste des chemins de la colonne B
+        column: Colonne à nettoyer ('a', 'b', ou 'both')
+        dry_run: Si True, ne supprime pas réellement les fichiers
+        task_id: ID de la tâche pour le suivi
+        tasks_db: Base de données des tâches pour le suivi
+        max_depth: Profondeur maximale de scan
+    
+    Returns:
+        dict: Résultats de la suppression avec les fichiers supprimés et les erreurs
+    """
+    logger.info(f"🗑️ Début de la suppression des orphelins (colonne: {column}, dry_run: {dry_run})")
+    
+    # D'abord, scanner pour identifier les orphelins
+    results, scan_errors = analyze_hardlinks(paths_a, paths_b, task_id, tasks_db, max_depth)
+    
+    deletion_results = {
+        "deleted_files": [],
+        "errors": scan_errors.copy(),
+        "dry_run": dry_run,
+        "total_deleted": 0,
+        "total_errors": 0
+    }
+    
+    files_to_delete = []
+    
+    # Déterminer quels fichiers supprimer selon la colonne
+    if column in ["a", "both"]:
+        files_to_delete.extend(results.get("orphans_a", []))
+        logger.info(f"📂 Fichiers orphelins colonne A à traiter: {len(results.get('orphans_a', []))}")
+    
+    if column in ["b", "both"]:
+        files_to_delete.extend(results.get("orphans_b", []))
+        logger.info(f"📂 Fichiers orphelins colonne B à traiter: {len(results.get('orphans_b', []))}")
+    
+    logger.info(f"📊 Total de fichiers à {'simuler' if dry_run else 'supprimer'}: {len(files_to_delete)}")
+    
+    if not files_to_delete:
+        logger.info("✅ Aucun fichier orphelin trouvé à supprimer")
+        return deletion_results
+    
+    # Traitement des fichiers
+    files_processed = 0
+    for file_path in files_to_delete:
+        files_processed += 1
+        
+        # Mise à jour du progrès si on a un task_id
+        if task_id and tasks_db and task_id in tasks_db:
+            tasks_db[task_id]["progress"] = files_processed
+            tasks_db[task_id]["current_file"] = os.path.basename(file_path)
+            
+            # Log de progression tous les 10 fichiers
+            if files_processed % 10 == 0:
+                logger.info(f"📊 Progression suppression: {files_processed}/{len(files_to_delete)} fichiers traités...")
+        
+        try:
+            if dry_run:
+                # Mode simulation : vérifier seulement que le fichier existe
+                if os.path.exists(file_path):
+                    deletion_results["deleted_files"].append({
+                        "path": file_path,
+                        "size": os.path.getsize(file_path),
+                        "action": "would_delete"
+                    })
+                    logger.debug(f"🔍 [DRY RUN] Fichier à supprimer: {file_path}")
+                else:
+                    logger.warning(f"⚠️ [DRY RUN] Fichier non trouvé: {file_path}")
+                    deletion_results["errors"].append({
+                        "path": file_path,
+                        "error": "Fichier non trouvé"
+                    })
+            else:
+                # Mode réel : supprimer le fichier
+                if os.path.exists(file_path):
+                    file_size = os.path.getsize(file_path)
+                    os.remove(file_path)
+                    deletion_results["deleted_files"].append({
+                        "path": file_path,
+                        "size": file_size,
+                        "action": "deleted"
+                    })
+                    logger.info(f"🗑️ Fichier supprimé: {file_path}")
+                    
+                    # Tentative de suppression du dossier parent s'il est vide
+                    try:
+                        parent_dir = os.path.dirname(file_path)
+                        if parent_dir and os.path.exists(parent_dir) and not os.listdir(parent_dir):
+                            os.rmdir(parent_dir)
+                            logger.info(f"📁 Dossier vide supprimé: {parent_dir}")
+                    except OSError:
+                        # Le dossier n'est pas vide ou ne peut pas être supprimé
+                        pass
+                else:
+                    logger.warning(f"⚠️ Fichier non trouvé lors de la suppression: {file_path}")
+                    deletion_results["errors"].append({
+                        "path": file_path,
+                        "error": "Fichier non trouvé lors de la suppression"
+                    })
+                    
+        except PermissionError as e:
+            error_msg = f"Permission refusée: {str(e)}"
+            logger.error(f"❌ {error_msg} pour {file_path}")
+            deletion_results["errors"].append({
+                "path": file_path,
+                "error": error_msg
+            })
+        except Exception as e:
+            error_msg = f"Erreur inattendue: {str(e)}"
+            logger.error(f"❌ {error_msg} pour {file_path}")
+            deletion_results["errors"].append({
+                "path": file_path,
+                "error": error_msg
+            })
+    
+    deletion_results["total_deleted"] = len(deletion_results["deleted_files"])
+    deletion_results["total_errors"] = len(deletion_results["errors"]) - len(scan_errors)
+    
+    action = "Simulation terminée" if dry_run else "Suppression terminée"
+    logger.info(f"✅ {action}: {deletion_results['total_deleted']} fichiers traités, {deletion_results['total_errors']} erreurs")
+    
+    return deletion_results
+
 if __name__ == "__main__":
     # Crée une structure de test pour simuler votre cas d'usage
     print("Création d'une structure de dossiers de test...")

@@ -38,6 +38,17 @@ const newTabName = ref('')
 const editingTabId = ref(null)
 const isAddingNewTab = ref(false)
 
+// État pour la suppression des orphelins
+const isDeletingOrphans = ref(false)
+const deleteProgress = ref(0)
+const deleteTotal = ref(0)
+const deleteCurrentFile = ref('')
+const deleteResults = ref(null)
+const showDeleteConfirmModal = ref(false)
+const deletePreview = ref(null)
+const deleteColumn = ref('b') // 'a', 'b' ou 'both'
+let deletePollingInterval = null
+
 // Fonction pour obtenir l'onglet actif
 const activeTab = computed(() => {
   return config.value?.tabs?.find(tab => tab.id === activeTabId.value) || config.value?.tabs?.[0]
@@ -279,6 +290,108 @@ function switchTab(tabId) {
   scanResults.value = null
 }
 
+// Fonctions pour la suppression des orphelins
+async function previewDeleteOrphans(column = 'b') {
+  try {
+    deleteColumn.value = column
+    const response = await axios.get(`${API_BASE_URL}/api/delete-orphans/${activeTabId.value}?column=${column}`)
+    deletePreview.value = response.data
+    showDeleteConfirmModal.value = true
+  } catch (e) {
+    console.error('Erreur lors de la prévisualisation', e)
+    if (e.response && e.response.data && e.response.data.detail) {
+      error.value = `Erreur de prévisualisation : ${e.response.data.detail}`
+    } else {
+      error.value = "Une erreur est survenue lors de la prévisualisation."
+    }
+  }
+}
+
+async function confirmDeleteOrphans() {
+  showDeleteConfirmModal.value = false
+  isDeletingOrphans.value = true
+  deleteResults.value = null
+  error.value = null
+  deleteProgress.value = 0
+  deleteTotal.value = 0
+  deleteCurrentFile.value = ''
+  if (deletePollingInterval) clearInterval(deletePollingInterval)
+
+  try {
+    const response = await axios.post(`${API_BASE_URL}/api/delete-orphans/${activeTabId.value}?column=${deleteColumn.value}&confirm=true`)
+    const taskId = response.data.task_id
+    pollDeleteStatus(taskId)
+  } catch (e) {
+    console.error('Erreur lors du lancement de la suppression', e)
+    if (e.response && e.response.data && e.response.data.detail) {
+      error.value = `Erreur de suppression : ${e.response.data.detail}`
+    } else {
+      error.value = "Une erreur est survenue lors du lancement de la suppression."
+    }
+    isDeletingOrphans.value = false
+  }
+}
+
+async function pollDeleteStatus(taskId) {
+  let pollAttempts = 0
+  const maxPollAttempts = 3600 // 1 heure maximum
+  
+  deletePollingInterval = setInterval(async () => {
+    pollAttempts++
+    
+    if (pollAttempts > maxPollAttempts) {
+      clearInterval(deletePollingInterval)
+      error.value = "Timeout: La suppression a pris trop de temps."
+      isDeletingOrphans.value = false
+      return
+    }
+    
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/scan/status/${taskId}`)
+      const task = response.data
+      deleteProgress.value = task.progress
+      deleteTotal.value = task.total
+      deleteCurrentFile.value = task.current_file
+
+      if (task.status === 'completed') {
+        clearInterval(deletePollingInterval)
+        deleteResults.value = task.results
+        isDeletingOrphans.value = false
+        // Vider les résultats de scan pour forcer un nouveau scan
+        scanResults.value = null
+        console.log('✅ Suppression terminée avec succès')
+      } else if (task.status === 'error') {
+        clearInterval(deletePollingInterval)
+        error.value = `Erreur de suppression: ${task.error || 'Erreur inconnue'}`
+        isDeletingOrphans.value = false
+        console.error('❌ Erreur lors de la suppression:', task.error)
+      } else if (task.status === 'timeout') {
+        clearInterval(deletePollingInterval)
+        error.value = "La suppression a expiré."
+        isDeletingOrphans.value = false
+        console.warn('⏰ Suppression expirée')
+      }
+    } catch (e) {
+      console.error('❌ Erreur lors de la récupération du statut de suppression:', e)
+      
+      if (e.response && e.response.status === 404) {
+        clearInterval(deletePollingInterval)
+        error.value = "Tâche de suppression non trouvée."
+        isDeletingOrphans.value = false
+      } else if (pollAttempts > 10 && pollAttempts % 10 === 0) {
+        clearInterval(deletePollingInterval)
+        error.value = "Erreurs répétées lors de la récupération de l'état de suppression."
+        isDeletingOrphans.value = false
+      }
+    }
+  }, 1000)
+}
+
+function cancelDeleteOrphans() {
+  showDeleteConfirmModal.value = false
+  deletePreview.value = null
+}
+
 </script>
 
 <template>
@@ -391,6 +504,28 @@ function switchTab(tabId) {
                <p v-if="scanCurrentFile" class="font-mono text-xs mt-1 truncate">{{ scanCurrentFile }}</p>
            </div>
        </div>
+
+        <!-- Section pour la barre de progression de suppression -->
+        <div v-if="isDeletingOrphans" class="my-4 p-4 bg-red-900/20 rounded-lg border border-red-700">
+            <h3 class="text-lg font-semibold text-center mb-2 text-red-400">🗑️ Suppression des orphelins en cours...</h3>
+            <div class="w-full bg-gray-700 rounded-full h-4 mb-2">
+                <div class="bg-red-500 h-4 rounded-full" :style="{ width: (deleteTotal > 0 ? (deleteProgress / deleteTotal) * 100 : 0) + '%' }"></div>
+            </div>
+            <div class="text-center text-sm text-gray-400">
+                <p>{{ deleteProgress }} / {{ deleteTotal }} fichiers traités</p>
+                <p v-if="deleteCurrentFile" class="font-mono text-xs mt-1 truncate">{{ deleteCurrentFile }}</p>
+            </div>
+        </div>
+
+        <!-- Section pour afficher les résultats de suppression -->
+        <div v-if="deleteResults" class="my-4 p-4 bg-green-900/20 rounded-lg border border-green-700">
+            <h3 class="text-lg font-semibold text-center mb-2 text-green-400">✅ Suppression terminée</h3>
+            <div class="text-center text-sm text-gray-300">
+                <p class="mb-2">{{ deleteResults.total_deleted }} fichier(s) supprimé(s)</p>
+                <p v-if="deleteResults.total_errors > 0" class="text-red-400">{{ deleteResults.total_errors }} erreur(s) rencontrée(s)</p>
+                <p class="text-xs text-gray-500 mt-2">Vous pouvez maintenant relancer un scan pour voir les changements ou demander à Radarr de retélécharger</p>
+            </div>
+        </div>
 
         <div v-if="config">
           <div class="flex mb-4 border-b border-gray-700">
@@ -573,13 +708,24 @@ function switchTab(tabId) {
               <div class="bg-gray-700/30 p-3 rounded-lg">
                 <div class="flex justify-between items-center mb-2">
                   <h3 class="text-xl font-semibold text-yellow-400">⚠️ Orphelins {{ activeTab?.name_b || 'Colonne B' }} ({{ scanResults.orphans_b.length }}/{{ scanResults.synced.length + scanResults.orphans_a.length + scanResults.orphans_b.length + scanResults.conflicts.length }})</h3>
-                  <button
-                    v-if="activeTab?.name === 'Séries' && scanResults.orphans_b.length > 0"
-                    @click="openSeriesOrphansModal('b')"
-                    class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded"
-                  >
-                    Voir par série
-                  </button>
+                  <div class="flex gap-2">
+                    <button
+                      v-if="scanResults.orphans_b.length > 0"
+                      @click="previewDeleteOrphans('b')"
+                      :disabled="isDeletingOrphans"
+                      class="bg-red-600 hover:bg-red-700 text-white text-xs px-2 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Supprimer tous les fichiers orphelins de cette colonne"
+                    >
+                      🗑️ Supprimer
+                    </button>
+                    <button
+                      v-if="activeTab?.name === 'Séries' && scanResults.orphans_b.length > 0"
+                      @click="openSeriesOrphansModal('b')"
+                      class="bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-2 py-1 rounded"
+                    >
+                      Voir par série
+                    </button>
+                  </div>
                 </div>
                 <div class="space-y-2 font-mono text-xs max-h-60 overflow-y-auto">
                   <div v-for="path in scanResults.orphans_b" :key="path" class="p-2 bg-yellow-900/50 rounded">
@@ -619,6 +765,67 @@ function switchTab(tabId) {
         :column-name="seriesOrphansType === 'a' ? (activeTab?.name_a || 'Colonne A') : (activeTab?.name_b || 'Colonne B')"
         @close="closeSeriesOrphansModal"
       />
+
+      <!-- Modale de confirmation de suppression -->
+      <div v-if="showDeleteConfirmModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 p-6 rounded-lg border border-gray-700 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+          <h2 class="text-2xl font-bold text-red-400 mb-4">⚠️ Confirmation de suppression</h2>
+          
+          <div v-if="deletePreview" class="mb-6">
+            <p class="text-lg text-gray-300 mb-4">
+              Vous êtes sur le point de supprimer <strong class="text-red-400">{{ deletePreview.total_deleted }} fichier(s) orphelin(s)</strong>
+              de la colonne <strong>{{ deleteColumn === 'a' ? (activeTab?.name_a || 'A') : (activeTab?.name_b || 'B') }}</strong>.
+            </p>
+            
+            <div class="bg-red-900/20 p-4 rounded-lg border border-red-700 mb-4">
+              <h3 class="text-lg font-semibold text-red-300 mb-2">⚠️ ATTENTION</h3>
+              <ul class="text-sm text-gray-300 space-y-1">
+                <li>• Cette action est <strong>irréversible</strong></li>
+                <li>• Les fichiers seront définitivement supprimés du disque</li>
+                <li>• Les dossiers vides seront également supprimés</li>
+                <li>• Assurez-vous d'avoir une sauvegarde si nécessaire</li>
+              </ul>
+            </div>
+
+            <div class="bg-gray-700/50 p-4 rounded-lg mb-4">
+              <h4 class="text-md font-semibold text-gray-300 mb-2">Fichiers à supprimer ({{ deletePreview.deleted_files.length }}) :</h4>
+              <div class="max-h-40 overflow-y-auto space-y-1">
+                <div v-for="file in deletePreview.deleted_files.slice(0, 20)" :key="file.path" class="text-xs font-mono text-gray-400 p-1 bg-gray-800 rounded">
+                  {{ file.path }}
+                  <span class="text-gray-500">({{ Math.round(file.size / 1024 / 1024) }} MB)</span>
+                </div>
+                <div v-if="deletePreview.deleted_files.length > 20" class="text-xs text-gray-500 p-1">
+                  ... et {{ deletePreview.deleted_files.length - 20 }} fichier(s) de plus
+                </div>
+              </div>
+            </div>
+
+            <div v-if="deletePreview.errors && deletePreview.errors.length > 0" class="bg-yellow-900/20 p-4 rounded-lg border border-yellow-700 mb-4">
+              <h4 class="text-md font-semibold text-yellow-300 mb-2">⚠️ Fichiers avec des problèmes ({{ deletePreview.errors.length }}) :</h4>
+              <div class="max-h-20 overflow-y-auto space-y-1">
+                <div v-for="error in deletePreview.errors.slice(0, 10)" :key="error.path" class="text-xs font-mono text-yellow-400">
+                  {{ error.path }} - {{ error.error }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end space-x-4">
+            <button
+              @click="cancelDeleteOrphans"
+              class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Annuler
+            </button>
+            <button
+              @click="confirmDeleteOrphans"
+              class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+            >
+              🗑️ Confirmer la suppression
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>

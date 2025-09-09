@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
-from scanner import analyze_hardlinks, analyze_hardlinks_by_folder, count_files
+from scanner import analyze_hardlinks, analyze_hardlinks_by_folder, count_files, delete_orphan_files
 from config_manager import load_config, save_config
 
 # Configuration du logging pour Docker
@@ -325,3 +325,114 @@ def get_scan_status(task_id: str):
     
     logger.debug(f"✅ Statut trouvé pour {task_id}: {task.get('status', 'unknown')} ({task.get('progress', 0)}/{task.get('total', 0)})")
     return task
+
+# --- Endpoints pour la suppression des orphelins ---
+
+def perform_delete_orphans_task(task_id: str, paths_a: list, paths_b: list, column: str, dry_run: bool, max_depth: int = -1):
+    """Effectue la suppression des orphelins et met à jour l'état de la tâche."""
+    logger.info(f"🗑️ Début de la suppression des orphelins pour la tâche {task_id} (colonne: {column}, dry_run: {dry_run})")
+    logger.info(f"📁 Chemins A: {paths_a}")
+    logger.info(f"📁 Chemins B: {paths_b}")
+    logger.info(f"🔢 Profondeur maximale: {max_depth if max_depth >= 0 else 'illimitée'}")
+    
+    try:
+        results = delete_orphan_files(paths_a, paths_b, column, dry_run, task_id, scan_tasks, max_depth)
+        scan_tasks[task_id]["status"] = "completed"
+        scan_tasks[task_id]["results"] = results
+        scan_tasks[task_id]["completed_at"] = time.time()
+        
+        action = "Simulation" if dry_run else "Suppression"
+        logger.info(f"✅ {action} des orphelins terminée pour la tâche {task_id}")
+        logger.info(f"📊 Résultats: {results.get('total_deleted', 0)} fichiers traités, {results.get('total_errors', 0)} erreurs")
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la suppression des orphelins de la tâche {task_id}: {str(e)}")
+        scan_tasks[task_id]["status"] = "error"
+        scan_tasks[task_id]["error"] = str(e)
+        scan_tasks[task_id]["completed_at"] = time.time()
+
+@app.get("/api/delete-orphans/{tab_id}")
+def preview_delete_orphans(tab_id: str, column: str = "b"):
+    """
+    Prévisualise les fichiers orphelins qui seraient supprimés (mode dry-run).
+    """
+    logger.info(f"🔍 Prévisualisation de la suppression des orphelins pour l'onglet: {tab_id} (colonne: {column})")
+    
+    config = load_config()
+    tab = next((t for t in config.get("tabs", []) if t.get("id") == tab_id), None)
+
+    if not tab:
+        logger.error(f"❌ Onglet non trouvé: {tab_id}")
+        raise HTTPException(status_code=404, detail=f"L'onglet '{tab_id}' n'existe pas.")
+    
+    paths_a = tab.get("paths_a", [])
+    paths_b = tab.get("paths_b", [])
+    max_depth = tab.get("max_depth", -1)
+    
+    if not paths_a or not paths_b:
+        logger.error(f"❌ Aucun chemin configuré pour l'onglet {tab_id}")
+        raise HTTPException(status_code=400, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
+
+    if column not in ["a", "b", "both"]:
+        raise HTTPException(status_code=400, detail="Le paramètre column doit être 'a', 'b' ou 'both'.")
+
+    try:
+        # Effectuer un dry-run pour obtenir la liste des fichiers
+        results = delete_orphan_files(paths_a, paths_b, column, dry_run=True, max_depth=max_depth)
+        logger.info(f"✅ Prévisualisation terminée: {results.get('total_deleted', 0)} fichiers à supprimer")
+        return results
+    except Exception as e:
+        logger.error(f"❌ Erreur lors de la prévisualisation: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la prévisualisation: {str(e)}")
+
+@app.post("/api/delete-orphans/{tab_id}")
+def delete_orphans(tab_id: str, background_tasks: BackgroundTasks, column: str = "b", confirm: bool = False):
+    """
+    Lance la suppression des fichiers orphelins en arrière-plan.
+    """
+    logger.info(f"🗑️ Demande de suppression des orphelins pour l'onglet: {tab_id} (colonne: {column}, confirm: {confirm})")
+    
+    if not confirm:
+        raise HTTPException(status_code=400, detail="Le paramètre 'confirm=true' est requis pour confirmer la suppression.")
+    
+    config = load_config()
+    tab = next((t for t in config.get("tabs", []) if t.get("id") == tab_id), None)
+
+    if not tab:
+        logger.error(f"❌ Onglet non trouvé: {tab_id}")
+        raise HTTPException(status_code=404, detail=f"L'onglet '{tab_id}' n'existe pas.")
+    
+    paths_a = tab.get("paths_a", [])
+    paths_b = tab.get("paths_b", [])
+    max_depth = tab.get("max_depth", -1)
+    
+    if not paths_a or not paths_b:
+        logger.error(f"❌ Aucun chemin configuré pour l'onglet {tab_id}")
+        raise HTTPException(status_code=400, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
+
+    if column not in ["a", "b", "both"]:
+        raise HTTPException(status_code=400, detail="Le paramètre column doit être 'a', 'b' ou 'both'.")
+
+    task_id = str(uuid.uuid4())
+    logger.info(f"📝 Comptage des fichiers pour la suppression, tâche {task_id}...")
+    total_files = count_files(paths_a, max_depth) + count_files(paths_b, max_depth)
+    logger.info(f"📊 Total de fichiers à analyser: {total_files}")
+    
+    current_time = time.time()
+    scan_tasks[task_id] = {
+        "status": "running",
+        "progress": 0,
+        "total": total_files,
+        "current_file": "",
+        "results": None,
+        "created_at": current_time,
+        "tab_id": tab_id,
+        "action": "delete_orphans",
+        "column": column
+    }
+    
+    logger.info(f"✨ Tâche de suppression {task_id} créée et ajoutée à scan_tasks")
+    logger.debug(f"🔍 Tâches actives: {list(scan_tasks.keys())}")
+
+    background_tasks.add_task(perform_delete_orphans_task, task_id, paths_a, paths_b, column, False, max_depth)
+    
+    return {"task_id": task_id, "message": f"Suppression des orphelins de la colonne {column} démarrée"}
