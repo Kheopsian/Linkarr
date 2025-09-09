@@ -4,12 +4,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
-
-from .scanner import analyze_hardlinks, analyze_hardlinks_by_folder
-from .config_manager import load_config, save_config
-# Importe nos modules
-from .scanner import analyze_hardlinks, analyze_hardlinks_by_folder
-from .config_manager import load_config, save_config
+from scanner import analyze_hardlinks, analyze_hardlinks_by_folder
+from config_manager import load_config, save_config
 
 # Constante pour la base de navigation (pour la sécurité)
 # Dans Docker, ce sera le point de montage de vos données, ex: /data
