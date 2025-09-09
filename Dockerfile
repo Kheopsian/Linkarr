@@ -23,10 +23,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN groupadd -g 1000 appuser && \
     useradd -u 1000 -g appuser -s /bin/sh -d /app appuser
 
-# Créer les répertoires nécessaires pour Nginx et la config
-RUN mkdir -p /app/config /var/log/nginx /var/lib/nginx /var/run/nginx && \
-    chown -R appuser:appuser /app/config /var/log/nginx /var/lib/nginx /var/run/nginx && \
-    chmod -R 755 /var/run/nginx
+# Créer les répertoires nécessaires pour Nginx, la config et les logs supervisord
+RUN mkdir -p /app/config /app/logs /var/log/nginx /var/lib/nginx /var/run/nginx && \
+    chown -R appuser:appuser /app/config /app/logs /var/log/nginx /var/lib/nginx /var/run/nginx && \
+    chmod -R 755 /var/run/nginx /app/logs
 
 COPY backend/ ./backend/
 

@@ -1,7 +1,4 @@
 server {
-    # Définir le fichier PID dans un emplacement accessible
-    pid /var/run/nginx/nginx.pid;
-    
     listen ${WEBUI_PORT};
     server_name localhost;
 
