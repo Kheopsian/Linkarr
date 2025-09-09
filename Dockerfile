@@ -18,6 +18,9 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Créer le répertoire de config pour la gestion des permissions
+RUN mkdir -p /app/config
+
 COPY backend/ ./backend/
 
 # Copier les fichiers statiques du frontend
