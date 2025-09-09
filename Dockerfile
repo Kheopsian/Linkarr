@@ -26,6 +26,9 @@ COPY backend/ ./backend/
 # Copier les fichiers statiques du frontend
 COPY --from=builder /app/dist /var/www/html
 
+# Donner la permission à Nginx de lire ces fichiers
+RUN chown -R www-data:www-data /var/www/html
+
 # Copier le TEMPLATE Nginx et le script d'entrée
 COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
