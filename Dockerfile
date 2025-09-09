@@ -12,8 +12,8 @@ RUN yarn build
 # --- STAGE 2: Application Finale ---
 FROM python:3.11-slim
 
-# Installer Nginx et Supervisor
-RUN apt-get update && apt-get install -y nginx supervisor
+# Installer Nginx, Supervisor et gettext-base (pour envsubst)
+RUN apt-get update && apt-get install -y nginx supervisor gettext-base
 
 # Définir le répertoire de travail
 WORKDIR /app
@@ -29,12 +29,11 @@ COPY backend/ ./backend/
 COPY --from=builder /app/dist /var/www/html
 
 # Copier les fichiers de configuration de Nginx et Supervisor
-COPY nginx.conf /etc/nginx/conf.d/default.conf.template
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Définir le port par défaut et l'exposer
-ENV WEBUI_PORT=8899
-EXPOSE 8899
+# Exposer le port 80 (le seul port public, géré par Nginx)
+EXPOSE 80
 
 # Lancer Supervisor, qui lancera Nginx et Gunicorn
-CMD /bin/bash -c "envsubst '\$WEBUI_PORT' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf && /usr/bin/supervisord"
+CMD ["/usr/bin/supervisord"]
