@@ -18,8 +18,14 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Créer le répertoire de config pour la gestion des permissions
-RUN mkdir -p /app/config
+# Créer le groupe et l'utilisateur 'appuser'
+# L'entrypoint se chargera de recréer l'utilisateur avec les PUID/PGID fournis
+RUN groupadd -g 1000 appuser && \
+    useradd -u 1000 -g appuser -s /bin/sh -d /app appuser
+
+# Créer les répertoires nécessaires pour Nginx et la config
+RUN mkdir -p /app/config /var/log/nginx /var/lib/nginx /run/nginx && \
+    chown -R appuser:appuser /app/config /var/log/nginx /var/lib/nginx /run/nginx
 
 COPY backend/ ./backend/
 
@@ -27,7 +33,7 @@ COPY backend/ ./backend/
 COPY --from=builder /app/dist /var/www/html
 
 # Donner la permission à Nginx de lire ces fichiers
-RUN chown -R www-data:www-data /var/www/html
+RUN chown -R appuser:appuser /var/www/html
 
 # Copier le TEMPLATE Nginx et le script d'entrée
 COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
