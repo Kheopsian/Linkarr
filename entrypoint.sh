@@ -45,6 +45,11 @@ chmod 755 /var/run/nginx
 chown -R appuser:appuser /app/config /app/logs /var/log/nginx /var/lib/nginx
 chmod -R 755 /app/config /app/logs /var/log/nginx /var/lib/nginx
 
+# Crée et configure les permissions pour le répertoire de config backend
+mkdir -p /app/backend/config
+chown -R appuser:appuser /app/backend/config
+chmod -R 755 /app/backend/config
+
 # Définit le port par défaut pour Nginx
 # Si l'utilisateur n'est pas root (UID != 0), utilise un port non privilégié
 if [ "${PUID}" != "0" ]; then
