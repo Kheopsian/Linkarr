@@ -1,47 +1,55 @@
 # Linkarr
 
-Linkarr est une application web full-stack conçue pour vous aider à gérer et organiser vos liens. Elle est composée d'un frontend en Vue.js et d'un backend en Python.
+Application de monitoring de hardlinks pour synchroniser les fichiers entre deux répertoires.
 
-## Structure du Projet
+## Description
 
-- `frontend/`: Contient l'application frontend développée avec Vue.js et Vite.
-- `backend/`: Contient l'API backend développée avec Python et Flask/Gunicorn.
-- `config/`: Fichiers de configuration.
-- `Dockerfile`: Pour construire l'image Docker de l'application.
-- `nginx.conf`: Fichiers de configuration pour Nginx.
-- `supervisord.conf`: Fichier de configuration pour Supervisor.
+Linkarr est une application qui permet de scanner des fichiers à la recherche de hardlinks (liens durs) entre deux répertoires. Elle est composée d'un backend Python qui effectue le scanning et d'un frontend Vue.js qui permet de configurer les chemins à scanner et d'afficher les résultats.
 
-## Démarrage rapide avec Docker
+## Fonctionnalités
 
-L'application est entièrement conteneurisée avec Docker pour un déploiement et un développement faciles.
+- Scan de fichiers pour détecter les hardlinks
+- Interface web pour configurer les chemins de scan
+- Affichage des fichiers synchronisés, orphelins et en conflit
+- Support des PUID/PGID pour une meilleure compatibilité Docker
 
-### Prérequis
+## Technologies utilisées
 
-- [Docker](https://docs.docker.com/get-docker/) installé sur votre machine.
+- Backend : Python, FastAPI
+- Frontend : Vue.js, Tailwind CSS
+- Infrastructure : Docker, NGINX, Gunicorn, Supervisor
 
-### Build de l'image Docker
+## Configuration Docker
 
-Pour construire l'image, exécutez la commande suivante à la racine du projet :
+L'application supporte les variables d'environnement suivantes :
+
+- `PUID` : User ID pour l'utilisateur appuser (par défaut : 1000)
+- `PGID` : Group ID pour le groupe appuser (par défaut : 1000)
+- `WEBUI_PORT` : Port d'écoute pour l'interface web (par défaut : 80)
+- `BROWSE_BASE_PATH` : Chemin de base pour la navigation dans les fichiers (par défaut : ".")
+
+### Exemple d'utilisation
 
 ```bash
-docker build -t linkarr .
+docker run -d \
+  --name linkarr \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e WEBUI_PORT=8080 \
+  -e BROWSE_BASE_PATH=/data \
+  -p 8080:8080 \
+  -v /chemin/vers/downloads:/data/downloads \
+  -v /chemin/vers/media:/data/media \
+  linkarr:latest
 ```
 
-### Lancer le conteneur
+## Résolution des problèmes de permissions
 
-Pour lancer l'application, exécutez la commande suivante :
+Les problèmes de permissions NGINX ont été résolus en :
 
-```bash
-docker run -p 8899:8899 linkarr
-```
+1. Créant le répertoire `/var/run/nginx` avec les bonnes permissions dans le Dockerfile
+2. Mettant à jour le entrypoint.sh pour gérer correctement les PUID/PGID
+3. Modifiant supervisord.conf pour éviter les warnings liés à l'exécution en tant que root
+4. Ajoutant la directive `pid` dans nginx.conf.template pour définir le fichier PID dans un emplacement accessible
 
-L'application sera accessible à l'adresse [http://localhost:8899](http://localhost:8899).
-
-### Changer le port
-
-Par défaut, l'application est exposée sur le port `8899`. Vous pouvez changer ce port en utilisant la variable d'environnement `WEBUI_PORT`.
-
-Par exemple, pour lancer l'application sur le port `8080` :
-
-```bash
-docker run -e WEBUI_PORT=8080 -p 8080:8080 linkarr
+Ces corrections permettent à l'application de fonctionner correctement même avec des PUID/PGID différents de 1000.

@@ -1,5 +1,7 @@
 #!/bin/sh
 
+#!/bin/sh
+
 # Définit les UID/GID par défaut à 1000 s'ils ne sont pas fournis
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
@@ -14,12 +16,18 @@ fi
 groupadd -g ${PGID} appuser
 useradd -u ${PUID} -g appuser -s /bin/sh -d /app appuser
 
+# Crée les répertoires nécessaires pour NGINX avec les bonnes permissions
+mkdir -p /var/run/nginx
+chown -R appuser:appuser /var/run/nginx
+chmod 755 /var/run/nginx
+
 # Donne la permission à notre nouvel utilisateur sur tous les dossiers nécessaires
-chown -R appuser:appuser /app/config /var/log/nginx /var/lib/nginx /run/nginx
+chown -R appuser:appuser /app/config /var/log/nginx /var/lib/nginx
+chmod -R 755 /app/config /var/log/nginx /var/lib/nginx
 
 # Définit le port par défaut pour Nginx
 export WEBUI_PORT=${WEBUI_PORT:-80}
 envsubst '${WEBUI_PORT}' < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Lance le processus principal (Supervisor)
-exec /usr/bin/supervisord
+exec /usr/bin/supervisord -u appuser
