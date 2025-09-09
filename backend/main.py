@@ -3,6 +3,7 @@ import os
 import uuid
 import logging
 import sys
+import traceback
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import List
@@ -368,6 +369,9 @@ def preview_delete_orphans(tab_id: str, column: str = "b"):
     paths_b = tab.get("paths_b", [])
     max_depth = tab.get("max_depth", -1)
     
+    logger.info(f"📁 Chemins A: {paths_a}")
+    logger.info(f"📁 Chemins B: {paths_b}")
+    
     if not paths_a or not paths_b:
         logger.error(f"❌ Aucun chemin configuré pour l'onglet {tab_id}")
         raise HTTPException(status_code=400, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
@@ -376,12 +380,56 @@ def preview_delete_orphans(tab_id: str, column: str = "b"):
         raise HTTPException(status_code=400, detail="Le paramètre column doit être 'a', 'b' ou 'both'.")
 
     try:
-        # Effectuer un dry-run pour obtenir la liste des fichiers
-        results = delete_orphan_files(paths_a, paths_b, column, dry_run=True, max_depth=max_depth)
-        logger.info(f"✅ Prévisualisation terminée: {results.get('total_deleted', 0)} fichiers à supprimer")
-        return results
+        # Effectuer d'abord un scan pour obtenir les orphelins
+        logger.info("🔍 Début du scan pour prévisualisation...")
+        scan_results, scan_errors = analyze_hardlinks(paths_a, paths_b, task_id=None, tasks_db=None, max_depth=max_depth)
+        
+        # Préparer la prévisualisation
+        orphans_to_delete = []
+        if column in ["a", "both"]:
+            orphans_to_delete.extend(scan_results.get("orphans_a", []))
+        if column in ["b", "both"]:
+            orphans_to_delete.extend(scan_results.get("orphans_b", []))
+        
+        # Créer la structure de réponse comme delete_orphan_files
+        preview_results = {
+            "deleted_files": [],
+            "errors": scan_errors.copy(),
+            "dry_run": True,
+            "total_deleted": 0,
+            "total_errors": len(scan_errors)
+        }
+        
+        # Simuler la suppression pour chaque fichier orphelin
+        for file_path in orphans_to_delete:
+            try:
+                if os.path.exists(file_path):
+                    preview_results["deleted_files"].append({
+                        "path": file_path,
+                        "size": os.path.getsize(file_path),
+                        "action": "would_delete"
+                    })
+                else:
+                    preview_results["errors"].append({
+                        "path": file_path,
+                        "error": "Fichier non trouvé"
+                    })
+            except Exception as e:
+                preview_results["errors"].append({
+                    "path": file_path,
+                    "error": str(e)
+                })
+        
+        preview_results["total_deleted"] = len(preview_results["deleted_files"])
+        preview_results["total_errors"] = len(preview_results["errors"]) - len(scan_errors)
+        
+        logger.info(f"✅ Prévisualisation terminée: {preview_results['total_deleted']} fichiers à supprimer, {preview_results['total_errors']} erreurs")
+        return preview_results
+        
     except Exception as e:
         logger.error(f"❌ Erreur lors de la prévisualisation: {str(e)}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Erreur lors de la prévisualisation: {str(e)}")
 
 @app.post("/api/delete-orphans/{tab_id}")

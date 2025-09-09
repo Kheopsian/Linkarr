@@ -42,11 +42,12 @@ def count_files(paths: list[str], max_depth: int = -1) -> int:
     logger.info(f"📊 Total de fichiers comptés: {total}")
     return total
 
-def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, tasks_db: dict, max_depth: int = -1):
+def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str = None, tasks_db: dict = None, max_depth: int = -1):
     """
     Analyse les liens durs (hardlinks) entre deux listes de répertoires.
     """
-    logger.info(f"🔍 Analyse des hardlinks démarrée pour la tâche {task_id} (profondeur max: {max_depth if max_depth >= 0 else 'illimitée'})")
+    task_info = f"pour la tâche {task_id}" if task_id else "sans tâche"
+    logger.info(f"🔍 Analyse des hardlinks démarrée {task_info} (profondeur max: {max_depth if max_depth >= 0 else 'illimitée'})")
     
     inodes_map = defaultdict(lambda: {"A": [], "B": []})
     errors = []
@@ -77,7 +78,8 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, task
                 logger.debug(f"🔍 Scan du dossier: {root} ({len(files)} fichiers)")
                 for filename in files:
                     files_processed += 1
-                    if tasks_db.get(task_id):
+                    # Mise à jour du progrès seulement si on a un task_id et tasks_db valides
+                    if task_id and tasks_db and task_id in tasks_db:
                         tasks_db[task_id]["progress"] += 1
                         tasks_db[task_id]["current_file"] = filename
                         # Log de progression tous les 100 fichiers
@@ -141,11 +143,12 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, task
 
     return results, errors
 
-def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_column: str, task_id: str, tasks_db: dict, max_depth: int = -1):
+def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_column: str, task_id: str = None, tasks_db: dict = None, max_depth: int = -1):
     """
     Analyse les liens durs (hardlinks) par dossier.
     """
-    logger.info(f"🔍 Analyse des hardlinks par dossier démarrée pour la tâche {task_id} (colonne: {check_column}, profondeur max: {max_depth if max_depth >= 0 else 'illimitée'})")
+    task_info = f"pour la tâche {task_id}" if task_id else "sans tâche"
+    logger.info(f"🔍 Analyse des hardlinks par dossier démarrée {task_info} (colonne: {check_column}, profondeur max: {max_depth if max_depth >= 0 else 'illimitée'})")
     
     inodes_map = defaultdict(lambda: {"A": [], "B": []})
     errors = []
@@ -178,7 +181,8 @@ def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_co
                 logger.debug(f"🔍 Scan du dossier: {root} ({len(files)} fichiers)")
                 for filename in files:
                     files_processed += 1
-                    if tasks_db.get(task_id):
+                    # Mise à jour du progrès seulement si on a un task_id et tasks_db valides
+                    if task_id and tasks_db and task_id in tasks_db:
                         tasks_db[task_id]["progress"] += 1
                         tasks_db[task_id]["current_file"] = filename
                         # Log de progression tous les 100 fichiers
