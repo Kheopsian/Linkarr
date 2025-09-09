@@ -12,7 +12,7 @@ def count_files(paths: list[str], max_depth: int = -1) -> int:
     for path in paths:
         try:
             path_total = 0
-            for root, _, files in os.walk(path):
+            for root, dirs, files in os.walk(path, topdown=True):
                 # Calculer la profondeur actuelle par rapport au chemin de base
                 if max_depth >= 0:
                     relative_path = os.path.relpath(root, path)
@@ -20,6 +20,10 @@ def count_files(paths: list[str], max_depth: int = -1) -> int:
                         depth = 0
                     else:
                         depth = len(relative_path.split(os.sep))
+                    
+                    # Empêcher la descente si on atteint la profondeur maximale
+                    if depth >= max_depth:
+                        dirs.clear()
                     
                     # Ignorer si on dépasse la profondeur maximale
                     if depth > max_depth:
@@ -53,7 +57,7 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, task
         nonlocal files_processed
         logger.info(f"📁 Scan du répertoire {column}: {directory_path}")
         try:
-            for root, _, files in os.walk(directory_path):
+            for root, dirs, files in os.walk(directory_path, topdown=True):
                 # Calculer la profondeur actuelle par rapport au chemin de base
                 if max_depth >= 0:
                     relative_path = os.path.relpath(root, directory_path)
@@ -61,6 +65,10 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, task
                         depth = 0
                     else:
                         depth = len(relative_path.split(os.sep))
+                    
+                    # Empêcher la descente si on atteint la profondeur maximale
+                    if depth >= max_depth:
+                        dirs.clear()
                     
                     # Ignorer si on dépasse la profondeur maximale
                     if depth > max_depth:
@@ -150,7 +158,7 @@ def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_co
         nonlocal files_processed
         logger.info(f"📁 Scan par dossier du répertoire {column}: {directory_path}")
         try:
-            for root, _, files in os.walk(directory_path):
+            for root, dirs, files in os.walk(directory_path, topdown=True):
                 # Calculer la profondeur actuelle par rapport au chemin de base
                 if max_depth >= 0:
                     relative_path = os.path.relpath(root, directory_path)
@@ -158,6 +166,10 @@ def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_co
                         depth = 0
                     else:
                         depth = len(relative_path.split(os.sep))
+                    
+                    # Empêcher la descente si on atteint la profondeur maximale
+                    if depth >= max_depth:
+                        dirs.clear()
                     
                     # Ignorer si on dépasse la profondeur maximale
                     if depth > max_depth:
