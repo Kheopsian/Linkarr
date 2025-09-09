@@ -45,10 +45,29 @@ chmod 755 /var/run/nginx
 chown -R appuser:appuser /app/config /app/logs /var/log/nginx /var/lib/nginx
 chmod -R 755 /app/config /app/logs /var/log/nginx /var/lib/nginx
 
-# Crée et configure les permissions pour le répertoire de config backend
-mkdir -p /app/backend/config
-chown -R appuser:appuser /app/backend/config
-chmod -R 755 /app/backend/config
+# Crée et configure les permissions pour le répertoire de config
+mkdir -p /app/config
+chown -R appuser:appuser /app/config
+chmod -R 755 /app/config
+
+# Initialisation de la configuration
+echo "🔧 Initialisation de la configuration..."
+if [ ! -f "/app/config/settings.json" ]; then
+    echo "📝 Aucune configuration trouvée, création de la configuration par défaut..."
+    cd /app && python -c "
+import sys
+sys.path.append('/app')
+from backend.config_manager import create_default_config
+create_default_config()
+" 2>/dev/null || echo "⚠️ Erreur lors de la création de la config par défaut"
+    echo "✅ Configuration par défaut créée dans /app/config/settings.json"
+else
+    echo "✅ Configuration existante trouvée dans /app/config/settings.json"
+fi
+
+# S'assure que les permissions sont correctes après initialisation
+chown -R ${PUID}:${PGID} /app/config
+chmod -R 755 /app/config
 
 # Définit le port par défaut pour Nginx
 # Si l'utilisateur n'est pas root (UID != 0), utilise un port non privilégié

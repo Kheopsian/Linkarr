@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  linkarr:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Configuration persistante - IMPORTANT pour conserver vos paramètres
+      - "./config:/app/config"
+      
+      # Adaptez ces chemins selon votre environnement
+      # Exemples pour un setup typique :
+      - "/path/to/your/downloads:/data/downloads"
+      - "/path/to/your/media:/data/media"
+      
+      # Exemples concrets (décommentez et adaptez) :
+      # - "/home/user/Downloads:/data/downloads"
+      # - "/home/user/Media:/data/media"
+      # - "/mnt/nas/downloads:/data/downloads"
+      # - "/mnt/nas/media:/data/media"
+    
+    environment:
+      # Permissions - adaptez selon votre utilisateur
+      - PUID=1000
+      - PGID=1000
+      
+      # Port de l'interface web
+      - WEBUI_PORT=8080
+      
+      # Chemin de configuration (ne pas modifier)
+      - CONFIG_PATH=/app/config/settings.json
+      
+      # Base pour l'explorateur de fichiers
+      - BROWSE_BASE_PATH=/data
+    
+    restart: unless-stopped
+    
+    # Optionnel: nom du conteneur
+    container_name: linkarr
+
+# Optionnel: créer un réseau dédié
+networks:
+  default:
+    name: linkarr-network

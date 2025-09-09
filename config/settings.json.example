@@ -1,0 +1,52 @@
+{
+  "tabs": [
+    {
+      "id": "movies",
+      "name": "Films",
+      "scan_mode": "file",
+      "check_column": "a",
+      "max_depth": -1,
+      "min_depth": 0,
+      "paths_a": [
+        "/data/downloads/movies"
+      ],
+      "paths_b": [
+        "/data/media/movies"
+      ],
+      "name_a": "Downloads",
+      "name_b": "Media"
+    },
+    {
+      "id": "series",
+      "name": "Séries",
+      "scan_mode": "folder",
+      "check_column": "a",
+      "max_depth": -1,
+      "min_depth": 0,
+      "paths_a": [
+        "/data/downloads/series"
+      ],
+      "paths_b": [
+        "/data/media/series"
+      ],
+      "name_a": "Downloads",
+      "name_b": "Media"
+    },
+    {
+      "id": "custom",
+      "name": "Personnalisé",
+      "scan_mode": "file",
+      "check_column": "both",
+      "max_depth": 2,
+      "min_depth": 1,
+      "paths_a": [
+        "/data/downloads/other"
+      ],
+      "paths_b": [
+        "/data/media/other"
+      ],
+      "name_a": "Source",
+      "name_b": "Destination"
+    }
+  ]
+}
