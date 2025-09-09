@@ -4,9 +4,13 @@
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
-# Supprime l'utilisateur/groupe par défaut et les recrée avec les IDs fournis
-deluser appuser
-delgroup appuser
+# Supprime l'utilisateur/groupe par défaut s'ils existent et les recrée avec les IDs fournis
+if id -u appuser >/dev/null 2>&1; then
+    deluser appuser
+fi
+if getent group appuser >/dev/null 2>&1; then
+    delgroup appuser
+fi
 groupadd -g ${PGID} appuser
 useradd -u ${PUID} -g appuser -s /bin/sh -d /app appuser
 

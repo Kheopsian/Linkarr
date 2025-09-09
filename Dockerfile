@@ -35,6 +35,9 @@ COPY --from=builder /app/dist /var/www/html
 # Donner la permission à Nginx de lire ces fichiers
 RUN chown -R appuser:appuser /var/www/html
 
+# Modifier la configuration Nginx pour utiliser 'appuser'
+RUN sed -i 's/user www-data;/user appuser;/' /etc/nginx/nginx.conf
+
 # Copier le TEMPLATE Nginx et le script d'entrée
 COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
