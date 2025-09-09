@@ -118,7 +118,20 @@ function closeSeriesOrphansModal() {
 }
 
 async function pollScanStatus(taskId) {
+  let pollAttempts = 0
+  const maxPollAttempts = 3600 // 1 heure maximum (3600 secondes)
+  
   pollingInterval = setInterval(async () => {
+    pollAttempts++
+    
+    // Arrêter le polling après le nombre maximum de tentatives
+    if (pollAttempts > maxPollAttempts) {
+      clearInterval(pollingInterval)
+      error.value = "Timeout: Le scan a pris trop de temps. Veuillez relancer le scan."
+      isScanning.value = false
+      return
+    }
+    
     try {
       const response = await axios.get(`${API_BASE_URL}/api/scan/status/${taskId}`)
       const task = response.data
@@ -130,11 +143,39 @@ async function pollScanStatus(taskId) {
         clearInterval(pollingInterval)
         scanResults.value = task.results
         isScanning.value = false
+        console.log('✅ Scan terminé avec succès')
+      } else if (task.status === 'error') {
+        clearInterval(pollingInterval)
+        error.value = `Erreur du scan: ${task.error || 'Erreur inconnue'}`
+        isScanning.value = false
+        console.error('❌ Erreur lors du scan:', task.error)
+      } else if (task.status === 'timeout') {
+        clearInterval(pollingInterval)
+        error.value = "Le scan a expiré. Veuillez relancer le scan sur un dossier plus petit ou vérifier les logs."
+        isScanning.value = false
+        console.warn('⏰ Scan expiré')
       }
     } catch (e) {
-      clearInterval(pollingInterval)
-      error.value = "Erreur lors de la récupération de l'état du scan."
-      isScanning.value = false
+      console.error('❌ Erreur lors de la récupération du statut:', e)
+      
+      // Si c'est une erreur 404 (tâche non trouvée), arrêter le polling
+      if (e.response && e.response.status === 404) {
+        clearInterval(pollingInterval)
+        error.value = "Tâche de scan non trouvée. Cela peut indiquer un problème de configuration du serveur."
+        isScanning.value = false
+      } else {
+        // Pour les autres erreurs, continuer le polling quelques fois avant d'abandonner
+        if (pollAttempts % 5 === 0) { // Log d'erreur tous les 5 essais
+          console.warn(`⚠️ Erreur de polling (tentative ${pollAttempts}/${maxPollAttempts}):`, e.message)
+        }
+        
+        // Arrêter après 10 erreurs consécutives
+        if (pollAttempts > 10 && pollAttempts % 10 === 0) {
+          clearInterval(pollingInterval)
+          error.value = "Erreurs répétées lors de la récupération de l'état du scan. Veuillez vérifier la connexion."
+          isScanning.value = false
+        }
+      }
     }
   }, 1000)
 }
