@@ -1,39 +1,38 @@
 # --- STAGE 1: Build du Frontend ---
 FROM node:20-alpine AS builder
 WORKDIR /app
-# Copie package.json ET yarn.lock
 COPY frontend/package.json frontend/yarn.lock ./
-# Installe les dépendances avec yarn
 RUN yarn install
 COPY frontend/ .
-# Lance le build avec yarn
 RUN yarn build
 
 # --- STAGE 2: Application Finale ---
 FROM python:3.11-slim
 
-# Installer Nginx, Supervisor et gettext-base (pour envsubst)
+# Installer les dépendances, y compris gettext-base pour envsubst
 RUN apt-get update && apt-get install -y nginx supervisor gettext-base
 
-# Définir le répertoire de travail
 WORKDIR /app
 
-# Copier les dépendances Python et les installer
+# Copier et installer les dépendances Python
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copier le code du backend
 COPY backend/ ./backend/
 
-# Copier les fichiers statiques du frontend buildés depuis le stage 1
+# Copier les fichiers statiques du frontend
 COPY --from=builder /app/dist /var/www/html
 
-# Copier les fichiers de configuration de Nginx et Supervisor
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Copier le TEMPLATE Nginx et le script d'entrée
+COPY nginx.conf.template /etc/nginx/conf.d/default.conf.template
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY entrypoint.sh /entrypoint.sh
 
-# Exposer le port 80 (le seul port public, géré par Nginx)
+# Rendre le script exécutable
+RUN chmod +x /entrypoint.sh
+
+# Exposer le port par défaut
 EXPOSE 80
 
-# Lancer Supervisor, qui lancera Nginx et Gunicorn
-CMD ["/usr/bin/supervisord"]
+# Définir le script d'entrée comme point de lancement du conteneur
+ENTRYPOINT ["/entrypoint.sh"]
