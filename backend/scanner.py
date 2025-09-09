@@ -5,14 +5,26 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
-def count_files(paths: list[str]) -> int:
+def count_files(paths: list[str], max_depth: int = -1) -> int:
     """Compte le nombre total de fichiers dans une liste de chemins."""
-    logger.info(f"📊 Comptage des fichiers dans {len(paths)} chemins...")
+    logger.info(f"📊 Comptage des fichiers dans {len(paths)} chemins (profondeur max: {max_depth if max_depth >= 0 else 'illimitée'})...")
     total = 0
     for path in paths:
         try:
             path_total = 0
-            for _, _, files in os.walk(path):
+            for root, _, files in os.walk(path):
+                # Calculer la profondeur actuelle par rapport au chemin de base
+                if max_depth >= 0:
+                    relative_path = os.path.relpath(root, path)
+                    if relative_path == '.':
+                        depth = 0
+                    else:
+                        depth = len(relative_path.split(os.sep))
+                    
+                    # Ignorer si on dépasse la profondeur maximale
+                    if depth > max_depth:
+                        continue
+                
                 path_total += len(files)
             total += path_total
             logger.debug(f"📁 {path}: {path_total} fichiers")
@@ -26,11 +38,11 @@ def count_files(paths: list[str]) -> int:
     logger.info(f"📊 Total de fichiers comptés: {total}")
     return total
 
-def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, tasks_db: dict):
+def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, tasks_db: dict, max_depth: int = -1):
     """
     Analyse les liens durs (hardlinks) entre deux listes de répertoires.
     """
-    logger.info(f"🔍 Analyse des hardlinks démarrée pour la tâche {task_id}")
+    logger.info(f"🔍 Analyse des hardlinks démarrée pour la tâche {task_id} (profondeur max: {max_depth if max_depth >= 0 else 'illimitée'})")
     
     inodes_map = defaultdict(lambda: {"A": [], "B": []})
     errors = []
@@ -42,6 +54,18 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, task
         logger.info(f"📁 Scan du répertoire {column}: {directory_path}")
         try:
             for root, _, files in os.walk(directory_path):
+                # Calculer la profondeur actuelle par rapport au chemin de base
+                if max_depth >= 0:
+                    relative_path = os.path.relpath(root, directory_path)
+                    if relative_path == '.':
+                        depth = 0
+                    else:
+                        depth = len(relative_path.split(os.sep))
+                    
+                    # Ignorer si on dépasse la profondeur maximale
+                    if depth > max_depth:
+                        continue
+                
                 logger.debug(f"🔍 Scan du dossier: {root} ({len(files)} fichiers)")
                 for filename in files:
                     files_processed += 1
@@ -109,11 +133,11 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, task
 
     return results, errors
 
-def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_column: str, task_id: str, tasks_db: dict):
+def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_column: str, task_id: str, tasks_db: dict, max_depth: int = -1):
     """
     Analyse les liens durs (hardlinks) par dossier.
     """
-    logger.info(f"🔍 Analyse des hardlinks par dossier démarrée pour la tâche {task_id} (colonne: {check_column})")
+    logger.info(f"🔍 Analyse des hardlinks par dossier démarrée pour la tâche {task_id} (colonne: {check_column}, profondeur max: {max_depth if max_depth >= 0 else 'illimitée'})")
     
     inodes_map = defaultdict(lambda: {"A": [], "B": []})
     errors = []
@@ -127,6 +151,18 @@ def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_co
         logger.info(f"📁 Scan par dossier du répertoire {column}: {directory_path}")
         try:
             for root, _, files in os.walk(directory_path):
+                # Calculer la profondeur actuelle par rapport au chemin de base
+                if max_depth >= 0:
+                    relative_path = os.path.relpath(root, directory_path)
+                    if relative_path == '.':
+                        depth = 0
+                    else:
+                        depth = len(relative_path.split(os.sep))
+                    
+                    # Ignorer si on dépasse la profondeur maximale
+                    if depth > max_depth:
+                        continue
+                
                 logger.debug(f"🔍 Scan du dossier: {root} ({len(files)} fichiers)")
                 for filename in files:
                     files_processed += 1

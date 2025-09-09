@@ -253,6 +253,7 @@ function addNewTab() {
       name: newTabName.value.trim(),
       scan_mode: 'file',
       check_column: 'a',
+      max_depth: -1,
       paths_a: [],
       paths_b: [],
       name_a: 'Colonne A',
@@ -300,7 +301,7 @@ function switchTab(tabId) {
             <!-- Options de scan -->
             <div v-if="activeTab" class="bg-gray-800 p-4 rounded-lg border border-gray-700 w-full max-w-2xl">
                 <h3 class="text-lg font-semibold mb-3 text-center">Options de scan pour l'onglet "{{ activeTab.name }}"</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <label class="block text-sm font-medium mb-2">Mode de scan</label>
                         <div class="flex gap-2">
@@ -341,6 +342,22 @@ function switchTab(tabId) {
                                 Les deux
                             </button>
                         </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Profondeur maximale</label>
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="number"
+                                v-model.number="activeTab.max_depth"
+                                min="-1"
+                                max="100"
+                                class="bg-gray-700 text-white px-3 py-2 rounded text-sm w-20"
+                                placeholder="-1"
+                            />
+                            <span class="text-xs text-gray-400">(-1 = illimitée)</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Limite la profondeur de parcours des dossiers</p>
                     </div>
                 </div>
                 

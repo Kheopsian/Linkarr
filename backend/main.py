@@ -108,6 +108,7 @@ class TabConfig(BaseModel):
     name: str
     scan_mode: str = "file"  # "file" ou "folder"
     check_column: str = "a"  # "a", "b" ou "both" (utilisé seulement si scan_mode = "folder")
+    max_depth: int = -1  # Profondeur maximale de scan (-1 = illimitée)
     paths_a: List[str]
     paths_b: List[str]
     name_a: str = "Downloads"
@@ -175,14 +176,15 @@ def browse_path(path: str = '/'):
 
 # --- Endpoint pour le Scan (mis à jour) ---
 
-def perform_scan_task(task_id: str, paths_a: list, paths_b: list):
+def perform_scan_task(task_id: str, paths_a: list, paths_b: list, max_depth: int = -1):
     """Effectue le scan de fichiers et met à jour l'état de la tâche."""
     logger.info(f"🔍 Début du scan pour la tâche {task_id}")
     logger.info(f"📁 Chemins A: {paths_a}")
     logger.info(f"📁 Chemins B: {paths_b}")
+    logger.info(f"🔢 Profondeur maximale: {max_depth if max_depth >= 0 else 'illimitée'}")
     
     try:
-        results, errors = analyze_hardlinks(paths_a, paths_b, task_id, scan_tasks)
+        results, errors = analyze_hardlinks(paths_a, paths_b, task_id, scan_tasks, max_depth)
         scan_tasks[task_id]["status"] = "completed"
         scan_tasks[task_id]["results"] = results
         scan_tasks[task_id]["errors"] = errors
@@ -214,6 +216,7 @@ def run_scan(tab_id: str, background_tasks: BackgroundTasks):
     
     paths_a = tab.get("paths_a", [])
     paths_b = tab.get("paths_b", [])
+    max_depth = tab.get("max_depth", -1)
     
     if not paths_a or not paths_b:
         logger.error(f"❌ Aucun chemin configuré pour l'onglet {tab_id}")
@@ -221,7 +224,7 @@ def run_scan(tab_id: str, background_tasks: BackgroundTasks):
 
     task_id = str(uuid.uuid4())
     logger.info(f"📝 Comptage des fichiers pour la tâche {task_id}...")
-    total_files = count_files(paths_a) + count_files(paths_b)
+    total_files = count_files(paths_a, max_depth) + count_files(paths_b, max_depth)
     logger.info(f"📊 Total de fichiers à scanner: {total_files}")
     
     current_time = time.time()
@@ -239,21 +242,22 @@ def run_scan(tab_id: str, background_tasks: BackgroundTasks):
     logger.info(f"✨ Tâche {task_id} créée et ajoutée à scan_tasks")
     logger.debug(f"🔍 Tâches actives: {list(scan_tasks.keys())}")
 
-    background_tasks.add_task(perform_scan_task, task_id, paths_a, paths_b)
+    background_tasks.add_task(perform_scan_task, task_id, paths_a, paths_b, max_depth)
     
     return {"task_id": task_id}
 
 
 # --- Endpoint pour le Scan par dossier (nouveau) ---
 
-def perform_scan_folder_task(task_id: str, paths_a: list, paths_b: list, check_column: str):
+def perform_scan_folder_task(task_id: str, paths_a: list, paths_b: list, check_column: str, max_depth: int = -1):
     """Effectue le scan de dossiers et met à jour l'état de la tâche."""
     logger.info(f"🔍 Début du scan par dossier pour la tâche {task_id} (colonne: {check_column})")
     logger.info(f"📁 Chemins A: {paths_a}")
     logger.info(f"📁 Chemins B: {paths_b}")
+    logger.info(f"🔢 Profondeur maximale: {max_depth if max_depth >= 0 else 'illimitée'}")
     
     try:
-        results, errors = analyze_hardlinks_by_folder(paths_a, paths_b, check_column, task_id, scan_tasks)
+        results, errors = analyze_hardlinks_by_folder(paths_a, paths_b, check_column, task_id, scan_tasks, max_depth)
         scan_tasks[task_id]["status"] = "completed"
         scan_tasks[task_id]["results"] = results
         scan_tasks[task_id]["errors"] = errors
@@ -280,6 +284,7 @@ def run_scan_folder(tab_id: str, background_tasks: BackgroundTasks):
     paths_a = tab.get("paths_a", [])
     paths_b = tab.get("paths_b", [])
     check_column = tab.get("check_column", "a")
+    max_depth = tab.get("max_depth", -1)
 
     if not paths_a or not paths_b:
         raise HTTPException(status_code=400, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
@@ -288,7 +293,7 @@ def run_scan_folder(tab_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="Le paramètre check_column doit être 'a', 'b' ou 'both'.")
 
     task_id = str(uuid.uuid4())
-    total_files = count_files(paths_a) + count_files(paths_b)
+    total_files = count_files(paths_a, max_depth) + count_files(paths_b, max_depth)
     
     current_time = time.time()
     scan_tasks[task_id] = {
@@ -302,7 +307,7 @@ def run_scan_folder(tab_id: str, background_tasks: BackgroundTasks):
         "tab_id": tab_id
     }
 
-    background_tasks.add_task(perform_scan_folder_task, task_id, paths_a, paths_b, check_column)
+    background_tasks.add_task(perform_scan_folder_task, task_id, paths_a, paths_b, check_column, max_depth)
     
     return {"task_id": task_id}
 
