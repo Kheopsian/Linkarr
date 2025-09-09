@@ -2,17 +2,20 @@
 import os
 from collections import defaultdict
 
-def analyze_hardlinks(paths_a: list[str], paths_b: list[str]):
+def count_files(paths: list[str]) -> int:
+    """Compte le nombre total de fichiers dans une liste de chemins."""
+    total = 0
+    for path in paths:
+        try:
+            for _, _, files in os.walk(path):
+                total += len(files)
+        except FileNotFoundError:
+            continue
+    return total
+
+def analyze_hardlinks(paths_a: list[str], paths_b: list[str], task_id: str, tasks_db: dict):
     """
     Analyse les liens durs (hardlinks) entre deux listes de répertoires.
-
-    Args:
-        paths_a: Liste des chemins de dossiers pour la colonne A.
-        paths_b: Liste des chemins de dossiers pour la colonne B.
-
-    Returns:
-        Un dictionnaire contenant les fichiers synchronisés, les orphelins
-        de chaque côté, et les erreurs de parcours.
     """
     
     inodes_map = defaultdict(lambda: {"A": [], "B": []})
@@ -23,6 +26,9 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str]):
         try:
             for root, _, files in os.walk(directory_path):
                 for filename in files:
+                    if tasks_db.get(task_id):
+                        tasks_db[task_id]["progress"] += 1
+                        tasks_db[task_id]["current_file"] = filename
                     filepath = os.path.join(root, filename)
                     try:
                         stat = os.stat(filepath)
@@ -74,25 +80,14 @@ def analyze_hardlinks(paths_a: list[str], paths_b: list[str]):
 
     return results, errors
 
-def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_column: str = 'a'):
+def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_column: str, task_id: str, tasks_db: dict):
     """
-    Analyse les liens durs (hardlinks) entre deux listes de répertoires en considérant
-    qu'un dossier est synchronisé s'il contient au moins un fichier hardlink.
-
-    Args:
-        paths_a: Liste des chemins de dossiers pour la colonne A.
-        paths_b: Liste des chemins de dossiers pour la colonne B.
-        check_column: Colonne à vérifier pour les dossiers synchronisés ('a' ou 'b').
-
-    Returns:
-        Un dictionnaire contenant les dossiers synchronisés, les orphelins
-        de chaque côté, et les erreurs de parcours.
+    Analyse les liens durs (hardlinks) par dossier.
     """
     
     inodes_map = defaultdict(lambda: {"A": [], "B": []})
     errors = []
     
-    # Dictionnaire pour suivre les dossiers qui ont au moins un fichier synchronisé
     synced_folders = defaultdict(set)
     
     def scan_directory(directory_path: str, column: str):
@@ -100,6 +95,9 @@ def analyze_hardlinks_by_folder(paths_a: list[str], paths_b: list[str], check_co
         try:
             for root, _, files in os.walk(directory_path):
                 for filename in files:
+                    if tasks_db.get(task_id):
+                        tasks_db[task_id]["progress"] += 1
+                        tasks_db[task_id]["current_file"] = filename
                     filepath = os.path.join(root, filename)
                     try:
                         stat = os.stat(filepath)

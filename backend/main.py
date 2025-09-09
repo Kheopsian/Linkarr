@@ -1,10 +1,11 @@
 # backend/main.py
 import os
-from fastapi import FastAPI, HTTPException
+import uuid
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
-from scanner import analyze_hardlinks, analyze_hardlinks_by_folder
+from scanner import analyze_hardlinks, analyze_hardlinks_by_folder, count_files
 from config_manager import load_config, save_config
 
 # Constante pour la base de navigation (pour la sécurité)
@@ -17,6 +18,8 @@ app = FastAPI()
 origins = [
     "http://localhost:5173", # L'adresse de notre frontend de dev
     "http://127.0.0.1:5173",
+    "http://localhost",
+    "http://127.0.0.1",
 ]
 
 app.add_middleware(
@@ -26,6 +29,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Dictionnaire pour garder en mémoire l'état des scans
+scan_tasks = {}
 
 # --- Modèles Pydantic pour la validation ---
 class TabConfig(BaseModel):
@@ -100,65 +106,94 @@ def browse_path(path: str = '/'):
 
 # --- Endpoint pour le Scan (mis à jour) ---
 
+def perform_scan_task(task_id: str, paths_a: list, paths_b: list):
+    """Effectue le scan de fichiers et met à jour l'état de la tâche."""
+    results, errors = analyze_hardlinks(paths_a, paths_b, task_id, scan_tasks)
+    scan_tasks[task_id]["status"] = "completed"
+    scan_tasks[task_id]["results"] = results
+    scan_tasks[task_id]["errors"] = errors
+
 @app.post("/api/scan/{tab_id}")
-def run_scan(tab_id: str):
+def run_scan(tab_id: str, background_tasks: BackgroundTasks):
     """
-    Lance une analyse sur un onglet en utilisant les chemins de la configuration sauvegardée.
+    Lance une analyse sur un onglet en arrière-plan.
     """
     config = load_config()
-    
-    # Trouver l'onglet correspondant à l'ID
-    tab = None
-    for t in config.get("tabs", []):
-        if t.get("id") == tab_id:
-            tab = t
-            break
-    
+    tab = next((t for t in config.get("tabs", []) if t.get("id") == tab_id), None)
+
     if not tab:
         raise HTTPException(status_code=404, detail=f"L'onglet '{tab_id}' n'existe pas.")
     
-    if not tab.get("paths_a") or not tab.get("paths_b"):
-        raise HTTPException(status_code=404, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
+    paths_a = tab.get("paths_a", [])
+    paths_b = tab.get("paths_b", [])
     
-    results, errors = analyze_hardlinks(tab["paths_a"], tab["paths_b"])
+    if not paths_a or not paths_b:
+        raise HTTPException(status_code=400, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
+
+    task_id = str(uuid.uuid4())
+    total_files = count_files(paths_a) + count_files(paths_b)
     
-    return {"results": results, "errors": errors}
+    scan_tasks[task_id] = {
+        "status": "running",
+        "progress": 0,
+        "total": total_files,
+        "current_file": "",
+        "results": None,
+        "errors": None
+    }
+
+    background_tasks.add_task(perform_scan_task, task_id, paths_a, paths_b)
+    
+    return {"task_id": task_id}
 
 
 # --- Endpoint pour le Scan par dossier (nouveau) ---
 
-@app.post("/api/scan-folder/{tab_id}")
-def run_scan_folder(tab_id: str, check_column: str = 'a'):
-    """
-    Lance une analyse sur un onglet en utilisant les chemins de la configuration sauvegardée
-    et en considérant qu'un dossier est synchronisé s'il contient au moins un fichier hardlink.
-    
-    Args:
-        tab_id: L'ID de l'onglet à analyser
-        check_column: La colonne à vérifier pour les dossiers synchronisés ('a', 'b' ou 'both')
-    """
-    if check_column not in ["a", "b", "both"]:
-        raise HTTPException(status_code=400, detail="Le paramètre check_column doit être 'a', 'b' ou 'both'.")
+def perform_scan_folder_task(task_id: str, paths_a: list, paths_b: list, check_column: str):
+    """Effectue le scan de dossiers et met à jour l'état de la tâche."""
+    results, errors = analyze_hardlinks_by_folder(paths_a, paths_b, check_column, task_id, scan_tasks)
+    scan_tasks[task_id]["status"] = "completed"
+    scan_tasks[task_id]["results"] = results
+    scan_tasks[task_id]["errors"] = errors
 
+@app.post("/api/scan-folder/{tab_id}")
+def run_scan_folder(tab_id: str, background_tasks: BackgroundTasks):
     config = load_config()
-    
-    # Trouver l'onglet correspondant à l'ID
-    tab = None
-    for t in config.get("tabs", []):
-        if t.get("id") == tab_id:
-            tab = t
-            break
+    tab = next((t for t in config.get("tabs", []) if t.get("id") == tab_id), None)
     
     if not tab:
         raise HTTPException(status_code=404, detail=f"L'onglet '{tab_id}' n'existe pas.")
+
+    paths_a = tab.get("paths_a", [])
+    paths_b = tab.get("paths_b", [])
+    check_column = tab.get("check_column", "a")
+
+    if not paths_a or not paths_b:
+        raise HTTPException(status_code=400, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
+
+    if check_column not in ["a", "b", "both"]:
+        raise HTTPException(status_code=400, detail="Le paramètre check_column doit être 'a', 'b' ou 'both'.")
+
+    task_id = str(uuid.uuid4())
+    total_files = count_files(paths_a) + count_files(paths_b)
     
-    if not tab.get("paths_a") or not tab.get("paths_b"):
-        raise HTTPException(status_code=404, detail=f"Aucun chemin configuré pour l'onglet '{tab_id}'.")
+    scan_tasks[task_id] = {
+        "status": "running",
+        "progress": 0,
+        "total": total_files,
+        "current_file": "",
+        "results": None,
+        "errors": None
+    }
+
+    background_tasks.add_task(perform_scan_folder_task, task_id, paths_a, paths_b, check_column)
     
-    results, errors = analyze_hardlinks_by_folder(
-        tab["paths_a"],
-        tab["paths_b"],
-        check_column
-    )
-    
-    return {"results": results, "errors": errors}
+    return {"task_id": task_id}
+
+@app.get("/api/scan/status/{task_id}")
+def get_scan_status(task_id: str):
+    """Récupère l'état d'une tâche de scan."""
+    task = scan_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tâche de scan non trouvée.")
+    return task

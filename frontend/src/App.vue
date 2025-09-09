@@ -19,6 +19,10 @@ const addTarget = ref({ category: null, column: null })
 const saveSuccessMessage = ref('')
 const scanResults = ref(null) // Pour stocker les résultats du dernier scan
 const isScanning = ref(false) // Pour afficher un message pendant le scan
+const scanProgress = ref(0)
+const scanTotal = ref(0)
+const scanCurrentFile = ref('')
+let pollingInterval = null
 
 // État pour la modale des orphelins de séries
 const isSeriesOrphansModalOpen = ref(false)
@@ -113,46 +117,58 @@ function closeSeriesOrphansModal() {
     isSeriesOrphansModalOpen.value = false
 }
 
-async function runScanFolder() {
-    isScanning.value = true
-    scanResults.value = null // Réinitialise les anciens résultats
-    error.value = null
+async function pollScanStatus(taskId) {
+  pollingInterval = setInterval(async () => {
     try {
-        // On appelle l'endpoint du backend avec l'ID de l'onglet actif et la colonne à vérifier
-        const response = await axios.post(`${API_BASE_URL}/api/scan-folder/${activeTabId.value}?check_column=${activeTab.value.check_column}`)
-        scanResults.value = response.data.results
+      const response = await axios.get(`${API_BASE_URL}/api/scan/status/${taskId}`)
+      const task = response.data
+      scanProgress.value = task.progress
+      scanTotal.value = task.total
+      scanCurrentFile.value = task.current_file
+
+      if (task.status === 'completed') {
+        clearInterval(pollingInterval)
+        scanResults.value = task.results
+        isScanning.value = false
+      }
     } catch (e) {
-        console.error(`Erreur lors du scan par dossier de l'onglet '${activeTabId.value}'`, e)
-        // Affiche une erreur plus spécifique si le backend la fournit
+      clearInterval(pollingInterval)
+      error.value = "Erreur lors de la récupération de l'état du scan."
+      isScanning.value = false
+    }
+  }, 1000)
+}
+
+async function startScan(url) {
+    isScanning.value = true
+    scanResults.value = null
+    error.value = null
+    scanProgress.value = 0
+    scanTotal.value = 0
+    scanCurrentFile.value = ''
+    if (pollingInterval) clearInterval(pollingInterval)
+
+    try {
+        const response = await axios.post(url)
+        const taskId = response.data.task_id
+        pollScanStatus(taskId)
+    } catch (e) {
+        console.error('Erreur lors du lancement du scan', e)
         if (e.response && e.response.data && e.response.data.detail) {
             error.value = `Erreur du scan : ${e.response.data.detail}`
         } else {
-            error.value = "Une erreur est survenue lors du scan."
+            error.value = "Une erreur est survenue lors du lancement du scan."
         }
-    } finally {
         isScanning.value = false
     }
 }
 
-async function runScan() {
-  isScanning.value = true
-  scanResults.value = null // Réinitialise les anciens résultats
-  error.value = null
-  try {
-    // On appelle l'endpoint du backend avec l'ID de l'onglet actif
-    const response = await axios.post(`${API_BASE_URL}/api/scan/${activeTabId.value}`)
-    scanResults.value = response.data.results
-  } catch (e) {
-    console.error(`Erreur lors du scan de l'onglet '${activeTabId.value}'`, e)
-    // Affiche une erreur plus spécifique si le backend la fournit
-    if (e.response && e.response.data && e.response.data.detail) {
-        error.value = `Erreur du scan : ${e.response.data.detail}`
-    } else {
-        error.value = "Une erreur est survenue lors du scan."
-    }
-  } finally {
-    isScanning.value = false
-  }
+function runScanFolder() {
+    startScan(`${API_BASE_URL}/api/scan-folder/${activeTabId.value}`)
+}
+
+function runScan() {
+    startScan(`${API_BASE_URL}/api/scan/${activeTabId.value}`)
 }
 
 // Fonctions pour la gestion des onglets
@@ -306,6 +322,18 @@ function switchTab(tabId) {
       </header>
       
       <main>
+       <!-- Section pour la barre de progression -->
+       <div v-if="isScanning" class="my-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
+           <h3 class="text-lg font-semibold text-center mb-2">Scan en cours...</h3>
+           <div class="w-full bg-gray-700 rounded-full h-4 mb-2">
+               <div class="bg-emerald-500 h-4 rounded-full" :style="{ width: (scanTotal > 0 ? (scanProgress / scanTotal) * 100 : 0) + '%' }"></div>
+           </div>
+           <div class="text-center text-sm text-gray-400">
+               <p>{{ scanProgress }} / {{ scanTotal }} fichiers scannés</p>
+               <p v-if="scanCurrentFile" class="font-mono text-xs mt-1 truncate">{{ scanCurrentFile }}</p>
+           </div>
+       </div>
+
         <div v-if="config">
           <div class="flex mb-4 border-b border-gray-700">
             <template v-for="tab in config.tabs" :key="tab.id">
