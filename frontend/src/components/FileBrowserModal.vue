@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
-const API_BASE_URL = 'http://127.0.0.1:8000'
+const API_BASE_URL = ''
 
 // 'props' sont les données passées depuis le parent (App.vue)
 // 'emit' est la manière de renvoyer des événements au parent

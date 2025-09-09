@@ -5,7 +5,7 @@ import axios from 'axios'
 import FileBrowserModal from './components/FileBrowserModal.vue'
 import SeriesOrphansModal from './components/SeriesOrphansModal.vue'
 
-const API_BASE_URL = 'http://127.0.0.1:8000'
+const API_BASE_URL = ''
 
 const config = ref(null)
 const activeTabId = ref('movies') // Utilise l'ID de l'onglet au lieu du nom
